@@ -15,7 +15,6 @@ import hashlib
 import logging
 
 from gevent import pywsgi
-from subprocess import Popen, PIPE
 from flask import Flask, jsonify, request, abort
 
 import config
@@ -35,8 +34,12 @@ def handle_gen_image(recvMsg):
     if not g_cache.has(recvMsg):
         g_cache.put(recvMsg)
         req = recvMsg.Content[1:].strip()
-        mid = weixin_gen_image(recvMsg.MsgId, req)
-        g_cache.put(recvMsg, mid)
+        try:
+            mid = weixin_gen_image(recvMsg.MsgId, req)
+            g_cache.put(recvMsg, mid)
+        except Exception as e:
+            g_cache.put(recvMsg, mid, e)
+
     else:
         mid = g_cache.get(recvMsg)
 
@@ -49,9 +52,11 @@ def handle_chatgpt(recvMsg):
 
     if not g_cache.has(recvMsg):
         g_cache.put(recvMsg)
-        answer = weixin_chatgpt(recvMsg.FromUserName, recvMsg.Content.strip())
-        g_cache.put(recvMsg, answer)
-
+        try:
+            answer = weixin_chatgpt(recvMsg.FromUserName, recvMsg.Content.strip())
+            g_cache.put(recvMsg, answer)
+        except Exception as e:
+            g_cache.put(recvMsg, answer, e)
     else:
         answer = g_cache.get(recvMsg)
 
@@ -63,9 +68,11 @@ def handle_image(recvMsg):
 
     if not g_cache.has(recvMsg):
         g_cache.put(recvMsg)
-        mid = weixin_variation_image(recvMsg.MsgId, recvMsg.MediaId)
-        g_cache.put(recvMsg, mid)
-
+        try:
+            mid = weixin_variation_image(recvMsg.MsgId, recvMsg.MediaId)
+            g_cache.put(recvMsg, mid)
+        except Exception as e:
+            g_cache.put(recvMsg, mid, e)
     else:
         mid = g_cache.get(recvMsg)
 
@@ -79,8 +86,11 @@ def handle_voice(recvMsg):
     if text is not None:
         if not g_cache.has(recvMsg):
             g_cache.put(recvMsg)
-            answer = weixin_chatgpt(recvMsg.FromUserName, text)
-            g_cache.put(recvMsg, answer)
+            try:
+                answer = weixin_chatgpt(recvMsg.FromUserName, text)
+                g_cache.put(recvMsg, answer)
+            except Exception as e:
+                g_cache.put(recvMsg, answer, e)
         else:
             answer = g_cache.get(recvMsg)
     else:

@@ -336,7 +336,7 @@ def test_chatgpt_v2(stream=True):
         if len(prompt) > 0:
             print('A: ', end='', flush=True)
             if stream == True:
-                answer = chatgpt_stream_v2('default', prompt, False, p=True, timeout=(1, 8))
+                answer = chatgpt_stream_v2('default', prompt, False, p=True)
             else:
                 answer = chatgpt_v2('default', prompt, False, p=True)
             print('')

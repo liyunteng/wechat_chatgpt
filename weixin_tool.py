@@ -23,7 +23,7 @@ class Cache():
     def has(self, recvMsg):
         return recvMsg.MsgId in self.cache
 
-    def put(self, recvMsg, value=None):
+    def put(self, recvMsg, value=None, exception=None):
         if len(self.cache) > 100:
             self._clean()
 
@@ -32,7 +32,10 @@ class Cache():
             self.cache[recvMsg.MsgId]['timestamp'] = time.time()
             self.cache[recvMsg.MsgId]['deadline'] = time.time() + 14.5
         self.cache[recvMsg.MsgId]['value'] = value
+        self.cache[recvMsg.MsgId]['exception'] = exception
         logger.debug('{}'.format(self.cache))
+        if exception is not None:
+            raise(Exception(exception))
 
     def get(self, recvMsg):
         if not self.has(recvMsg):
@@ -41,14 +44,18 @@ class Cache():
         if self.cache[recvMsg.MsgId]['value'] is not None:
             return self.cache[recvMsg.MsgId]['value']
 
-        while self.cache[recvMsg.MsgId]['value'] is None and time.time() < self.cache[recvMsg.MsgId]['deadline']:
+        while self.cache[recvMsg.MsgId]['value'] is None and \
+                self.cache[recvMsg.MsgId]['exception'] is None and \
+                time.time() < self.cache[recvMsg.MsgId]['deadline']:
             time.sleep(0.1)
 
-        if self.cache[recvMsg.MsgId]['value'] is None:
+        if self.cache[recvMsg.MsgId]['value'] is not None:
+            return self.cache[recvMsg.MsgId]['value']
+        if self.cache[recvMsg.MsgId]['exception'] is not None:
+            raise(Exception(self.cache[recvMsg.MsgId]['exception']))
+        else:
             logger.error('Timeout: {}'.format(self.cache[recvMsg.MsgId]))
             raise(Exception('Timeout'))
-        else:
-            return self.cache[recvMsg.MsgId]['value']
 
 
 def init_logging(debug=False):
@@ -76,7 +83,6 @@ def weixin_chatgpt(username, prompt, max_tokens=500, timeout=(1.0, 13.0)):
     try:
         answer = chatgpt_stream(username, prompt, False, max_tokens=max_tokens, timeout=timeout)
     except Exception as e:
-        logger.error(e)
         raise(e)
     return answer
 
@@ -92,7 +98,6 @@ def weixin_gen_image(msgId, prompt, size='512x512'):
         mid = media.upload(accessToken, output_image, 'image')
 
     except Exception as e:
-        logger.error(e)
         raise(e)
     finally:
         if os.path.exists(output_image):
@@ -120,7 +125,6 @@ def weixin_variation_image(msgId, mediaId, size='256x256'):
         mid = media.upload(accessToken, output_image, 'image')
 
     except Exception as e:
-        logger.error(e)
         raise(e)
     finally:
         if os.path.exists(input_image):
@@ -150,7 +154,6 @@ def weixin_process_audio(msgId, mediaId):
         text = speech(mp3_audio)
 
     except Exception as e:
-        logger.error(e)
         raise(e)
 
     finally:
