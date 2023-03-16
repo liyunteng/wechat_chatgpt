@@ -230,17 +230,26 @@ def speech(audio_file):
 
 
 def test_chatgpt(stream=True):
+    try:
+        import readline
+        import rlcompleter
+        readline.parse_and_bind('tab: complete')
+    except Exception:
+        pass
+
     while True:
-        prompt = input('Q: ')
+        try:
+            prompt = input('Q: ')
+        except EOFError:
+            return
+
         if len(prompt) > 0:
             print('A: ', end='', flush=True)
             if stream == True:
                 answer = chatgpt_stream('default', prompt, False, p=True)
             else:
                 answer = chatgpt('default', prompt, False, p=True)
-            print('')
-        else:
-            break
+        print('')
 
 def test_gen_image(size='1024x1024'):
     prompt = 'a monkey'
