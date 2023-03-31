@@ -159,6 +159,46 @@ def chatgpt_stream(username, prompt, save=False, max_tokens=2000, timeout=(10,60
 
     return answer
 
+def chatgpt_generate(prompt, context=None, max_tokens=2000, timeout=(10,60)):
+    start = time.time()
+
+    if len(prompt) <= 0:
+        return ''
+
+    user_= {'role': 'user', 'content': prompt}
+    try:
+        messages = []
+        if context is not None:
+            for x in context:
+                messages.append(x)
+
+        # TODO: optimiz token_count
+        token_count = 0
+        for idx,x in enumerate(reversed(messages)):
+            token_count += len(x['content'])
+            if token_count >= 2000:
+                begin = len(messages) - idx + 1
+                logger.debug('token_count: {} len: {} idx: {} begin: {}'.format(token_count, len(messages), idx, begin))
+                messages = messages[begin:]
+                break
+
+        messages.append(user_)
+        response = openai.ChatCompletion.create(
+            model = 'gpt-3.5-turbo',
+            messages = messages,
+            temperature=0.9,
+            max_tokens=max_tokens,
+            request_timeout=timeout,
+            stream=True)
+
+        logger.info('chatgpt_generate spand: {} '.format(time.time() - start))
+        return response
+
+    except Exception as e:
+        logger.error('chatgpt_generate spand: {} Exception: {}'.format(time.time() - start, e))
+        raise(e)
+
+
 def gen_image(prompt, filename, size='512x512'):
     try:
         response  = openai.Image.create(

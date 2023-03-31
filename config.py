@@ -4,6 +4,8 @@
 
 # Create: 2023/03/06
 
+debug = False
+
 # openai api_key
 api_key=''
 

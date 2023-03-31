@@ -8,6 +8,7 @@ import logging
 from weixin_media import Media
 from weixin_token import Token
 from openai_function import gen_image, variation_image, speech, chatgpt, chatgpt_stream
+# from openai_test import chatgpt_stream_v2
 
 logger = logging.getLogger('abc')
 
@@ -18,14 +19,15 @@ class Cache():
         self.cache = {}
 
     def _clean(self):
-        self.cache.clear()
+        now = time.time()
+        self.cache = dict(filter(lambda x: x[1]['deadline'] > now, self.cache.items()))
+        logger.debug("cache len: {}".format(len(self.cache)))
 
     def has(self, recvMsg):
         return recvMsg.MsgId in self.cache
 
     def put(self, recvMsg, value=None, exception=None):
-        if len(self.cache) > 100:
-            self._clean()
+        self._clean()
 
         if value is None:
             self.cache[recvMsg.MsgId] = {}
@@ -62,23 +64,28 @@ def init_logging(debug=False):
     l = logging.getLogger('abc')
     l.setLevel(logging.DEBUG)
 
+
     formatter = logging.Formatter('[%(asctime)s] %(levelname)5s - %(message)s')
+
+    if debug:
+        formatter = logging.Formatter('[%(asctime)s] - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
 
     fh = logging.FileHandler('main.log', mode='w')
     fh.setFormatter(formatter)
     if debug:
         fh.setLevel(logging.DEBUG)
+
+        sh = logging.StreamHandler()
+        sh.setFormatter(formatter)
+        sh.setLevel(logging.DEBUG)
+        l.addHandler(sh)
     else:
         fh.setLevel(logging.INFO)
     l.addHandler(fh)
 
-    # sh = logging.StreamHandler()
-    # sh.setFormatter(formatter)
-    # sh.setLevel(logging.INFO)
-    # l.addHandler(sh)
     return l
 
-def weixin_chatgpt(username, prompt, max_tokens=500, timeout=(1.0, 13.0)):
+def weixin_chatgpt(username, prompt, max_tokens=500, timeout=(2.0, 12.0)):
     answer = None
     try:
         answer = chatgpt_stream(username, prompt, False, max_tokens=max_tokens, timeout=timeout)

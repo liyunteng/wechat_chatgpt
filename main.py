@@ -14,15 +14,16 @@ import time
 import hashlib
 import logging
 
-from gevent import pywsgi
-from flask import Flask, jsonify, request, abort
+from gevent.pywsgi import WSGIServer
+from subprocess import Popen, PIPE
+from flask import Flask, jsonify, request, abort, Response
 
 import config
 import weixin_reply
 import weixin_receive
 from weixin_tool import weixin_chatgpt, weixin_gen_image, weixin_variation_image, Cache, init_logging
 
-logger = init_logging()
+logger = init_logging(debug=config.debug)
 app = Flask(__name__)
 g_cache = Cache()
 
@@ -99,6 +100,111 @@ def handle_voice(recvMsg):
     logger.debug('Answer: {}'.format(answer))
     return answer
 
+import json
+from openai_test import chatgpt_generate_v2
+@app.route('/web_v2', methods=['OPTIONS'])
+def web_v2_options():
+    headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': '*',
+        'Access-Control-Allow-Headers': '*',
+    }
+    reply = Response(headers=headers)
+    return reply
+
+@app.route('/web_v2', methods=['POST'])
+def web_v2():
+    req = request.get_json()
+    logger.debug('{}'.format(req))
+
+    headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': '*',
+        'Access-Control-Allow-Headers': '*',
+    }
+
+    context = None
+    prompt = None
+    if 'context' in req:
+        context = req['context']
+    if 'prompt' in req:
+        prompt = req['prompt']
+
+    if prompt is None:
+        abort(404)
+
+    try:
+        response = chatgpt_generate_v2(prompt, context)
+        def generate_v2(response):
+            for x in response.iter_lines(delimiter=b'\n\n'):
+                if x == b'data: [DONE]':
+                    return
+
+                if len(x) < 20:
+                    continue
+
+                d = json.loads(x[6:])
+                if 'content' in d['choices'][0]['delta']:
+                    data = d['choices'][0]['delta']['content']
+                    yield data
+        reply = Response(generate_v2(response), headers=headers)
+        return reply
+    except Exception as e:
+        def generate_error(ex):
+            for x in "Exception: {}".format(ex):
+                data = x
+                yield data
+        reply = Response(generate_error(e), headers=headers)
+        return reply
+
+from openai_function import chatgpt_generate
+@app.route('/web', methods=['OPTIONS'])
+def web_options():
+    headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': '*',
+        'Access-Control-Allow-Headers': '*',
+    }
+    reply = Response(headers=headers)
+    return reply
+
+@app.route('/web', methods=['POST'])
+def web():
+    req = request.get_json()
+    logger.debug('{}'.format(req))
+
+    headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': '*',
+        'Access-Control-Allow-Headers': '*',
+    }
+
+    context = None
+    prompt = None
+    if 'context' in req:
+        context = req['context']
+    if 'prompt' in req:
+        prompt = req['prompt']
+
+    if prompt is None:
+        abort(404)
+
+    try:
+        response = chatgpt_generate(prompt, context, timeout=(10, 30))
+        def generate(response):
+            for x in response:
+                if 'content' in x['choices'][0]['delta']:
+                    data = x['choices'][0]['delta']['content']
+                    yield data
+        reply = Response(generate(response), headers=headers)
+        return reply
+    except Exception as e:
+        def generate_error(ex):
+            for x in "Exception: {}".format(ex):
+                data = x
+                yield data
+        reply = Response(generate_error(e), headers=headers)
+        return reply
 
 @app.route('/wx', methods=['GET'])
 def auth():
@@ -121,7 +227,6 @@ def auth():
     else:
         logger.error("auth failed")
         return ""
-
 
 @app.route('/wx', methods=['POST'])
 def message():
@@ -192,7 +297,7 @@ def message():
 
 
 def main():
-    server = pywsgi.WSGIServer(('0.0.0.0', 80), app)
+    server = WSGIServer(('0.0.0.0', 80), app)
     server.serve_forever()
 
 if __name__ == '__main__':

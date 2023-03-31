@@ -14,13 +14,21 @@ from config import api_key
 
 logger = logging.getLogger('abc')
 
-session = requests.Session()
-session.keep_alive = True
-session.timeout = 60
-session.headers.update({
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer ' + api_key,
-})
+session = None
+def get_session():
+    global session
+    if session is None:
+        session = requests.Session()
+        session.keep_alive = True
+        session.timeout = 60
+        session.mount("https://",
+                      requests.adapters.HTTPAdapter(max_retries=2))
+        session.headers.update({
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + api_key,
+        })
+
+    return session
 
 def openai_chat_v2(prompt, max_tokens=400, timeout=(10,60)):
     start = time.time()
@@ -39,7 +47,7 @@ def openai_chat_v2(prompt, max_tokens=400, timeout=(10,60)):
     }
 
     try:
-        response = session.post('https://api.openai.com/v1/completions', json=data, timeout=timeout)
+        response = get_session().post('https://api.openai.com/v1/completions', json=data, timeout=timeout)
 
         # logger.info(response.json())
         if not response.ok:
@@ -78,7 +86,6 @@ def chatgpt_v2(username, prompt, save=False, max_tokens=2000, timeout=(10,60), p
             logger.debug('token_count: {} len: {} idx: {} begin: {}'.format(token_count, len(messages), idx, begin))
             messages = messages[begin:]
             break
-        logger.error('answer: {}'.format(answer))
 
     messages.append(user_)
     data = {
@@ -90,7 +97,7 @@ def chatgpt_v2(username, prompt, save=False, max_tokens=2000, timeout=(10,60), p
     }
 
     try:
-        response = session.post('https://api.openai.com/v1/chat/completions', json=data, timeout=timeout)
+        response = get_session().post('https://api.openai.com/v1/chat/completions', json=data, timeout=timeout)
 
         # logger.info(response.json())
         if not response.ok:
@@ -115,7 +122,7 @@ def chatgpt_v2(username, prompt, save=False, max_tokens=2000, timeout=(10,60), p
 
     return answer
 
-def chatgpt_stream_v2(username, prompt, save=False, max_tokens=2000, timeout=(10,60), p=False):
+def chatgpt_stream_v2(username, prompt, save=False, max_tokens=2000, timeout=(10,180), p=False):
     start = time.time()
 
     if len(prompt) <= 0:
@@ -152,7 +159,7 @@ def chatgpt_stream_v2(username, prompt, save=False, max_tokens=2000, timeout=(10
     }
 
     try:
-        response = session.post('https://api.openai.com/v1/chat/completions', json=data, stream=True, timeout=timeout)
+        response = get_session().post('https://api.openai.com/v1/chat/completions', json=data, stream=True, timeout=timeout)
 
         # logger.info(response.json())
         if not response.ok:
@@ -190,6 +197,51 @@ def chatgpt_stream_v2(username, prompt, save=False, max_tokens=2000, timeout=(10
 
     return answer
 
+def chatgpt_generate_v2(prompt, context=None, max_tokens=2000, timeout=(10,60)):
+    start = time.time()
+
+    if len(prompt) <= 0:
+        return ''
+    user_= {'role': 'user', 'content': prompt}
+
+    messages = []
+    if context is not None:
+        for x in context:
+            messages.append(x)
+
+    # TODO: optimiz token_count
+    token_count = 0
+    for idx,x in enumerate(reversed(messages)):
+        token_count += len(x['content'])
+        if token_count >= 2000:
+            begin = len(messages) - idx + 1
+            logger.debug('token_count: {} len: {} idx: {} begin: {}'.format(token_count, len(messages), idx, begin))
+            messages = messages[begin:]
+            break
+
+    messages.append(user_)
+    data = {
+        'model': 'gpt-3.5-turbo',
+        'messages': messages,
+        'temperature': 0.9,
+        'max_tokens': max_tokens,
+        'stream': True,
+    }
+
+    try:
+        response = get_session().post('https://api.openai.com/v1/chat/completions', json=data, stream=True, timeout=timeout)
+
+        # logger.info(response.__dict__)
+        if not response.ok:
+            raise requests.RequestException(response.json()['error']['message'])
+
+        # logger.info(response.text)
+        logger.info('chatgpt_generate_v2 spand: {}'.format(time.time() - start))
+        return response
+    except Exception as e:
+        logger.error('chatgpt_generate_v2 spand: {} Exception: {}'.format(time.time() - start, e))
+        raise(e)
+
 def gen_image_v2(prompt, filename, size='512x512'):
     model = 'image-alpha-001'
     data = {
@@ -201,7 +253,7 @@ def gen_image_v2(prompt, filename, size='512x512'):
     }
 
     try:
-        response = session.post('https://api.openai.com/v1/images/generations', json=data)
+        response = get_session().post('https://api.openai.com/v1/images/generations', json=data)
         if not response.ok:
             raise requests.RequestException(response.json()['error']['message'])
 
@@ -241,7 +293,7 @@ def edit_image_v2(prompt, filename, input_image, mask_image, size='512x512'):
            files, data
         )
         headers['Content-Type'] = content_type
-        response = session.post('https://api.openai.com/v1/images/edits', data=data, headers=headers)
+        response = get_session().post('https://api.openai.com/v1/images/edits', data=data, headers=headers)
         if not response.ok:
             raise requests.RequestException(response.json()['error']['message'])
 
@@ -281,7 +333,7 @@ def variation_image_v2(filename, input_image, size='256x256'):
         )
         headers['Content-Type'] = content_type
 
-        response = session.post('https://api.openai.com/v1/images/variations', data=data, headers=headers)
+        response = get_session().post('https://api.openai.com/v1/images/variations', data=data, headers=headers)
         if not response.ok:
             raise requests.RequestException(response.json()['error']['message'])
 
@@ -318,7 +370,7 @@ def speech_v2(audio_file):
         )
         headers['Content-Type'] = content_type
 
-        response = session.post('https://api.openai.com/v1/audio/transcriptions', data=data, headers=headers)
+        response = get_session().post('https://api.openai.com/v1/audio/transcriptions', data=data, headers=headers)
         if not response.ok:
             raise requests.RequestException(response.json()['error']['message'])
 
@@ -391,6 +443,3 @@ if __name__ ==  '__main__':
     # test_edit_image_v2('512x512')
     # test_variation_image_v2('512x512')
     # test_speech_v2()
-
-
-
